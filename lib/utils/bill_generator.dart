@@ -41,7 +41,7 @@ class BillGenerator {
                 ],
               ),
               pw.SizedBox(height: 40),
-              pw.Table.fromTextArray(
+              pw.TableHelper.fromTextArray(
                 context: context,
                 headers: ['Item', 'Rate', 'Qty', 'Total'],
                 data: items.map((item) => [

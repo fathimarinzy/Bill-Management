@@ -37,7 +37,7 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  int _selectedIndex = 3; // Default to 'Customers' tab as per screenshot
+  int _selectedIndex = 1; // Default to 'home' tab as per screenshot
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   String _historySearchQuery = ''; // Added for History tab search
@@ -162,7 +162,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             return Column(
               children: [
                 AppBar(
-                  title: const Text('Home'),
+                  title: const Text('Invo'),
                   actions: [
                      IconButton(
                       icon: const Icon(Icons.logout),
@@ -1027,7 +1027,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       children: [
         // Custom App Bar for History/Invoices
         Container(
-          padding: const EdgeInsets.only(top: 50, left: 16, right: 16, bottom: 16),
+          padding: const EdgeInsets.all(16),
           color: Colors.white,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
