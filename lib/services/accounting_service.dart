@@ -173,7 +173,17 @@ class AccountingService with ChangeNotifier {
     );
 
     _transactions = maps.map((e) => TransactionModel.fromMap(e)).toList();
+    _transactions = maps.map((e) => TransactionModel.fromMap(e)).toList();
     notifyListeners();
+  }
+
+  Future<List<TransactionModel>> getAllTransactions() async {
+    final db = await DatabaseHelper.instance.database;
+    final maps = await db.query(
+      'transactions',
+      orderBy: 'date DESC',
+    );
+    return maps.map((e) => TransactionModel.fromMap(e)).toList();
   }
 
   Future<void> addTransaction(TransactionModel transaction) async {
