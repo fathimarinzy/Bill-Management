@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter_contacts/flutter_contacts.dart';
 import '../models/accounting_entry.dart';
 import '../services/accounting_service.dart';
 import '../services/auth_service.dart';
@@ -27,7 +28,47 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
     }
   }
 
+  Future<void> _pickContact() async {
+    try {
+      // openExternalPick uses an intent-based picker — no permission needed
+      final contact = await FlutterContacts.openExternalPick();
+      if (contact == null || !mounted) return;
 
+      // Try to get full contact details (needs READ_CONTACTS permission)
+      if (await FlutterContacts.requestPermission()) {
+        final fullContact = await FlutterContacts.getContact(contact.id, withProperties: true);
+        if (fullContact != null && mounted) {
+          setState(() {
+            if (_nameController.text.isEmpty) {
+              _nameController.text = fullContact.displayName;
+            }
+            if (fullContact.phones.isNotEmpty) {
+              _phoneController.text = fullContact.phones.first.number;
+            }
+          });
+          return;
+        }
+      }
+
+      // Fallback: use basic info from the picker if permission was denied
+      if (mounted) {
+        setState(() {
+          if (_nameController.text.isEmpty) {
+            _nameController.text = contact.displayName;
+          }
+          if (contact.phones.isNotEmpty) {
+            _phoneController.text = contact.phones.first.number;
+          }
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error picking contact: $e')),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -115,6 +156,11 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
                 hintText: 'Contact number',
                 hintStyle: TextStyle(color: Colors.grey[400]),
                 prefixIcon: const Icon(Icons.phone_outlined, color: Colors.grey),
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.contacts_outlined, color: Colors.blue),
+                  onPressed: _pickContact,
+                  tooltip: 'Pick from contacts',
+                ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(30),
                   borderSide: BorderSide(color: Colors.grey.shade300),
@@ -178,6 +224,4 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
       ),
     );
   }
-
-
 }

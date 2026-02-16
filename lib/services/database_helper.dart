@@ -19,7 +19,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path, 
-      version: 5, 
+      version: 6, 
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -65,6 +65,30 @@ class DatabaseHelper {
           description TEXT,
           type TEXT NOT NULL,
           FOREIGN KEY (entryId) REFERENCES accounting_entries (id) ON DELETE CASCADE
+        )
+      ''');
+    }
+    if (oldVersion < 6) {
+      // Version 6: Add sale_purchase_entries and invoice_items tables
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS sale_purchase_entries (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          itemName TEXT NOT NULL,
+          salePrice REAL NOT NULL,
+          purchasePrice REAL NOT NULL,
+          date TEXT NOT NULL
+        )
+      ''');
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS invoice_items (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          transactionId INTEGER NOT NULL,
+          itemName TEXT NOT NULL,
+          quantity REAL NOT NULL,
+          unit TEXT NOT NULL,
+          rate REAL NOT NULL,
+          total REAL NOT NULL,
+          FOREIGN KEY (transactionId) REFERENCES transactions (id) ON DELETE CASCADE
         )
       ''');
     }
@@ -138,6 +162,31 @@ CREATE TABLE transactions (
   description $textNullable,
   type $textType,
   FOREIGN KEY (entryId) REFERENCES accounting_entries (id) ON DELETE CASCADE
+  )
+''');
+
+    // Sale/Purchase Entries Table
+    await db.execute('''
+CREATE TABLE sale_purchase_entries (
+  id $idType,
+  itemName $textType,
+  salePrice $realType,
+  purchasePrice $realType,
+  date $textType
+  )
+''');
+
+    // Invoice Items Table
+    await db.execute('''
+CREATE TABLE invoice_items (
+  id $idType,
+  transactionId $integerType,
+  itemName $textType,
+  quantity $realType,
+  unit $textType,
+  rate $realType,
+  total $realType,
+  FOREIGN KEY (transactionId) REFERENCES transactions (id) ON DELETE CASCADE
   )
 ''');
   }

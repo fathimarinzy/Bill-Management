@@ -3,6 +3,8 @@ import '../models/accounting_entry.dart';
 import '../models/item_detail.dart';
 import '../models/stock_item.dart';
 import '../models/transaction_model.dart';
+import '../models/sale_purchase_model.dart';
+import '../models/invoice_item_model.dart';
 import 'database_helper.dart';
 
 class AccountingService with ChangeNotifier {
@@ -38,10 +40,34 @@ class AccountingService with ChangeNotifier {
     }
   }
 
-  Future<void> addEntry(AccountingEntry entry) async {
+  Future<int> addEntry(AccountingEntry entry) async {
     final db = await DatabaseHelper.instance.database;
-    await db.insert('accounting_entries', entry.toMap());
+    final id = await db.insert('accounting_entries', entry.toMap());
     await loadEntries(entry.userId);
+    return id;
+  }
+
+  Future<int> getGuestEntry(int userId) async {
+    final db = await DatabaseHelper.instance.database;
+    final maps = await db.query(
+      'accounting_entries',
+      where: 'userId = ? AND name = ?',
+      whereArgs: [userId, 'Walk-in Customer'],
+    );
+
+    if (maps.isNotEmpty) {
+      return maps.first['id'] as int;
+    } else {
+      final entry = AccountingEntry(
+        userId: userId,
+        name: 'Walk-in Customer',
+        phone: '',
+        creditAmount: 0,
+        debitAmount: 0,
+        date: DateTime.now().toIso8601String(),
+      );
+      return await addEntry(entry);
+    }
   }
 
   Future<void> updateEntry(AccountingEntry entry) async {
@@ -117,7 +143,7 @@ class AccountingService with ChangeNotifier {
     try {
       final db = await DatabaseHelper.instance.database;
       debugPrint('Loading stock items...');
-      final maps = await db.query('stock_items', orderBy: 'name ASC');
+      final maps = await db.query('stock_items', orderBy: 'id DESC');
       debugPrint('Loaded ${maps.length} items from DB');
       _stockItems = maps.map((e) => StockItem.fromMap(e)).toList();
       notifyListeners();
@@ -173,7 +199,6 @@ class AccountingService with ChangeNotifier {
     );
 
     _transactions = maps.map((e) => TransactionModel.fromMap(e)).toList();
-    _transactions = maps.map((e) => TransactionModel.fromMap(e)).toList();
     notifyListeners();
   }
 
@@ -186,9 +211,9 @@ class AccountingService with ChangeNotifier {
     return maps.map((e) => TransactionModel.fromMap(e)).toList();
   }
 
-  Future<void> addTransaction(TransactionModel transaction) async {
+  Future<int> addTransaction(TransactionModel transaction) async {
     final db = await DatabaseHelper.instance.database;
-    await db.insert('transactions', transaction.toMap());
+    final txId = await db.insert('transactions', transaction.toMap());
 
     // Update parent entry totals
     final entry = _entries.firstWhere((e) => e.id == transaction.entryId);
@@ -215,6 +240,7 @@ class AccountingService with ChangeNotifier {
 
     await updateEntry(updatedEntry);
     await loadTransactions(transaction.entryId);
+    return txId;
   }
 
   Future<void> deleteTransaction(TransactionModel transaction) async {
@@ -250,5 +276,88 @@ class AccountingService with ChangeNotifier {
 
     await updateEntry(updatedEntry);
     await loadTransactions(transaction.entryId);
+  }
+
+  // Sale & Purchase Logic
+  List<SalePurchaseEntry> _salePurchaseEntries = [];
+  List<SalePurchaseEntry> get salePurchaseEntries => _salePurchaseEntries;
+
+  Future<void> loadSalePurchaseEntries() async {
+    final db = await DatabaseHelper.instance.database;
+    final maps = await db.query('sale_purchase_entries', orderBy: 'date DESC');
+    _salePurchaseEntries = maps.map((e) => SalePurchaseEntry.fromMap(e)).toList();
+    notifyListeners();
+  }
+
+  Future<void> addSalePurchaseEntry(SalePurchaseEntry entry) async {
+    final db = await DatabaseHelper.instance.database;
+    await db.insert('sale_purchase_entries', entry.toMap());
+    await loadSalePurchaseEntries();
+  }
+
+  Future<void> updateSalePurchaseEntry(SalePurchaseEntry entry) async {
+    final db = await DatabaseHelper.instance.database;
+    await db.update(
+      'sale_purchase_entries',
+      entry.toMap(),
+      where: 'id = ?',
+      whereArgs: [entry.id],
+    );
+    await loadSalePurchaseEntries();
+  }
+
+  Future<void> deleteSalePurchaseEntry(int id) async {
+    final db = await DatabaseHelper.instance.database;
+    await db.delete(
+      'sale_purchase_entries',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    await loadSalePurchaseEntries();
+  }
+
+  // Invoice Items Logic
+  Future<void> saveInvoiceItems(int transactionId, List<InvoiceItemModel> items) async {
+    final db = await DatabaseHelper.instance.database;
+    for (var item in items) {
+      final itemWithTxId = InvoiceItemModel(
+        transactionId: transactionId,
+        itemName: item.itemName,
+        quantity: item.quantity,
+        unit: item.unit,
+        rate: item.rate,
+        total: item.total,
+      );
+      await db.insert('invoice_items', itemWithTxId.toMap());
+    }
+  }
+
+  Future<List<InvoiceItemModel>> getInvoiceItems(int transactionId) async {
+    final db = await DatabaseHelper.instance.database;
+    final maps = await db.query(
+      'invoice_items',
+      where: 'transactionId = ?',
+      whereArgs: [transactionId],
+    );
+    return maps.map((e) => InvoiceItemModel.fromMap(e)).toList();
+  }
+
+  Future<void> updateInvoiceItems(int transactionId, List<InvoiceItemModel> items) async {
+    final db = await DatabaseHelper.instance.database;
+    // Delete old items
+    await db.delete('invoice_items', where: 'transactionId = ?', whereArgs: [transactionId]);
+    // Insert new items
+    await saveInvoiceItems(transactionId, items);
+  }
+
+  Future<void> updateTransaction(TransactionModel transaction) async {
+    final db = await DatabaseHelper.instance.database;
+    await db.update(
+      'transactions',
+      transaction.toMap(),
+      where: 'id = ?',
+      whereArgs: [transaction.id],
+    );
+    notifyListeners();
   }
 }

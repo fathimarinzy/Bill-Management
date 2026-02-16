@@ -101,7 +101,9 @@ class BillGenerator {
   }) async {
     final pdf = pw.Document();
     final total = items.fold<double>(0, (sum, item) => sum + (item['total'] as double));
-    final balance = total - customerAdvance;
+    final roundedTotal = total.floorToDouble();
+    final roundOff = roundedTotal - total;
+    final balance = roundedTotal - customerAdvance;
 
     pdf.addPage(
       pw.Page(
@@ -166,9 +168,27 @@ class BillGenerator {
                     children: [
                       pw.Row(
                         children: [
-                          pw.Text('Total: ', style: pw.TextStyle(fontSize: 14)),
+                          pw.Text('Subtotal: ', style: pw.TextStyle(fontSize: 14)),
                           pw.SizedBox(width: 20),
                           pw.Text('₹${total.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 14)),
+                        ],
+                      ),
+                      if (roundOff != 0) ...[
+                        pw.SizedBox(height: 5),
+                        pw.Row(
+                          children: [
+                            pw.Text('Round Off: ', style: pw.TextStyle(fontSize: 14, color: PdfColors.orange)),
+                            pw.SizedBox(width: 20),
+                            pw.Text('₹${roundOff.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 14, color: PdfColors.orange)),
+                          ],
+                        ),
+                      ],
+                      pw.SizedBox(height: 5),
+                      pw.Row(
+                        children: [
+                          pw.Text('Total: ', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+                          pw.SizedBox(width: 20),
+                          pw.Text('₹${roundedTotal.toStringAsFixed(0)}', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
                         ],
                       ),
                       pw.SizedBox(height: 5),
@@ -185,7 +205,7 @@ class BillGenerator {
                           pw.Text('Balance: ', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
                           pw.SizedBox(width: 20),
                           pw.Text(
-                            '₹${balance.toStringAsFixed(2)}',
+                            '₹${balance.toStringAsFixed(0)}',
                             style: pw.TextStyle(
                               fontSize: 16,
                               fontWeight: pw.FontWeight.bold,

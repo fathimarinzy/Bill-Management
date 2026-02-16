@@ -134,7 +134,7 @@ class _PersonDetailsScreenState extends State<PersonDetailsScreen> {
                         final newTransaction = TransactionModel(
                           entryId: widget.entry.id!,
                           amount: amount,
-                          date: DateFormat('dd-MMM-yy hh:mm a').format(selectedDate),
+                          date: selectedDate.toIso8601String(),
                           description: noteController.text,
                           type: type,
                         );
@@ -215,9 +215,16 @@ class _PersonDetailsScreenState extends State<PersonDetailsScreen> {
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Text(transaction.date, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                                        if (transaction.description.isNotEmpty)
-                                          Text(transaction.description, style: const TextStyle(fontSize: 14)),
+                                        Text(
+                                          () {
+                                            final dt = DateTime.tryParse(transaction.date);
+                                            if (dt != null) {
+                                              return DateFormat('dd-MMM-yy hh:mm a').format(dt);
+                                            }
+                                            return transaction.date;
+                                          }(),
+                                          style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                        ),
                                       ],
                                     ),
                                   ),

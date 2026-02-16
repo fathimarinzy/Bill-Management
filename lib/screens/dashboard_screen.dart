@@ -1,14 +1,18 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
 import '../services/auth_service.dart';
 import '../services/accounting_service.dart';
 import 'add_entry_screen.dart';
 import 'person_details_screen.dart';
 import 'login_screen.dart';
+import 'invoice_detail_screen.dart';
 import '../models/stock_item.dart';
 import '../models/accounting_entry.dart';
 import '../models/transaction_model.dart';
+import '../models/invoice_item_model.dart';
+import '../models/sale_purchase_model.dart';
 import '../utils/bill_generator.dart';
 
 class InvoiceItem {
@@ -37,16 +41,18 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  int _selectedIndex = 1; // Default to 'home' tab as per screenshot
+  int _selectedIndex = 2; // Default to 'home' tab (index 2 after reindex)
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   String _historySearchQuery = ''; // Added for History tab search
+  String _salePurchaseFilter = 'All'; // All, Daily, Weekly, Monthly, Yearly
   
   // Invoice state
   AccountingEntry? _selectedCustomer;
   final TextEditingController _customerController = TextEditingController();
   final List<InvoiceItem> _invoiceItems = [];
   int _invoiceItemCounter = 0;
+  int? _editingTransactionId; // Track if editing an existing invoice
   
   // Inline Item Entry Controllers
   final TextEditingController _itemNameController = TextEditingController();
@@ -66,6 +72,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         final accountingService = Provider.of<AccountingService>(context, listen: false);
         accountingService.loadEntries(authService.userId!);
         accountingService.loadStockItems();
+        accountingService.loadSalePurchaseEntries();
       }
     });
     _searchController.addListener(() {
@@ -106,6 +113,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
             label: 'Items',
           ),
           BottomNavigationBarItem(
+            icon: Icon(Icons.point_of_sale_outlined),
+            label: 'Sale/Buy',
+          ),
+          BottomNavigationBarItem(
             icon: Icon(Icons.storefront_outlined),
             label: 'Home',
           ),
@@ -130,7 +141,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget? _getFAB() {
-    if (_selectedIndex == 3) {
+    if (_selectedIndex == 4) { // Customers
       return FloatingActionButton(
         onPressed: () {
           showDialog(
@@ -142,9 +153,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: const Icon(Icons.person_add, color: Colors.white),
       );
-    } else if (_selectedIndex == 0) {
+    } else if (_selectedIndex == 0) { // Items
       return FloatingActionButton(
         onPressed: () => _showAddStockItemModal(),
+        backgroundColor: Colors.blue[900],
+        child: const Icon(Icons.add, color: Colors.white),
+      );
+    } else if (_selectedIndex == 1) { // Sale & Purchase
+      return FloatingActionButton(
+        onPressed: () => _showAddSalePurchaseModal(),
         backgroundColor: Colors.blue[900],
         child: const Icon(Icons.add, color: Colors.white),
       );
@@ -157,6 +174,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       case 0:
         return _buildItemsTab();
       case 1:
+        return _buildSalePurchaseTab();
+      case 2:
         return Consumer<AccountingService>(
           builder: (context, accountingService, child) {
             return Column(
@@ -211,9 +230,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
             );
           }
         );
-      case 2:
-        return _buildHistoryTab();
       case 3:
+        return _buildHistoryTab();
+      case 4:
         return _buildCustomersTab();
       default:
         return const Center(child: Text('Unknown Tab'));
@@ -224,7 +243,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Consumer<AccountingService>(
       builder: (context, accountingService, child) {
         final filteredEntries = accountingService.entries.where((entry) {
-          return entry.name.toLowerCase().contains(_searchQuery);
+          return entry.name != 'Walk-in Customer' && 
+                 entry.name.toLowerCase().contains(_searchQuery);
         }).toList();
 
         return Column(
@@ -241,10 +261,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         'Customers',
                         style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.filter_list),
-                        onPressed: () {}, // Filter placeholder
-                      ),
+                      // IconButton(
+                      //   icon: const Icon(Icons.filter_list),
+                      //   onPressed: () {}, // Filter placeholder
+                      // ),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -271,8 +291,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 separatorBuilder: (context, index) => const Divider(height: 1, indent: 70, endIndent: 16),
                 itemBuilder: (context, index) {
                   final entry = filteredEntries[index];
-                  final balance = entry.creditAmount - entry.debitAmount;
-                  final isPositive = balance >= 0;
+                  final advance = entry.debitAmount; // Given amount = advance
 
                   return ListTile(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -294,15 +313,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text(
-                          '₹${balance.abs().toStringAsFixed(2)}',
+                          '₹${advance.toStringAsFixed(2)}',
                           style: TextStyle(
-                            color: isPositive ? Colors.green : Colors.red,
+                            color: Colors.green,
                             fontWeight: FontWeight.bold,
                             fontSize: 16,
                           ),
                         ),
                         Text(
-                          isPositive ? 'Advance' : 'Due',
+                          'Advance',
                           style: TextStyle(
                             color: Colors.grey[600],
                             fontSize: 12,
@@ -380,10 +399,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         'Products',
                         style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.filter_list),
-                        onPressed: () {}, 
-                      ),
+                      // IconButton(
+                      //   icon: const Icon(Icons.filter_list),
+                      //   onPressed: () {}, 
+                      // ),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -432,6 +451,338 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ],
         );
       },
+    );
+  }
+
+  Widget _buildSalePurchaseTab() {
+    return Consumer<AccountingService>(
+      builder: (context, accountingService, child) {
+        final entries = accountingService.salePurchaseEntries;
+
+        return Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Sale & Purchase',
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                  ),
+                  PopupMenuButton<String>(
+                    icon: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _salePurchaseFilter,
+                          style: TextStyle(color: Colors.blue[900], fontSize: 13, fontWeight: FontWeight.w500),
+                        ),
+                        Icon(Icons.filter_list, color: Colors.blue[900]),
+                      ],
+                    ),
+                    onSelected: (value) {
+                      setState(() => _salePurchaseFilter = value);
+                    },
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(value: 'All', child: Text('All')),
+                      const PopupMenuItem(value: 'Daily', child: Text('Daily')),
+                      const PopupMenuItem(value: 'Weekly', child: Text('Weekly')),
+                      const PopupMenuItem(value: 'Monthly', child: Text('Monthly')),
+                      const PopupMenuItem(value: 'Yearly', child: Text('Yearly')),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            // Filter entries based on selected period
+            Builder(
+              builder: (context) {
+                final now = DateTime.now();
+                final filteredEntries = entries.where((e) {
+                  final entryDate = DateTime.tryParse(e.date) ?? DateTime.now();
+                  switch (_salePurchaseFilter) {
+                    case 'Daily':
+                      return entryDate.year == now.year && entryDate.month == now.month && entryDate.day == now.day;
+                    case 'Weekly':
+                      final weekStart = now.subtract(Duration(days: now.weekday - 1));
+                      final weekStartDate = DateTime(weekStart.year, weekStart.month, weekStart.day);
+                      return entryDate.isAfter(weekStartDate.subtract(const Duration(seconds: 1)));
+                    case 'Monthly':
+                      return entryDate.year == now.year && entryDate.month == now.month;
+                    case 'Yearly':
+                      return entryDate.year == now.year;
+                    default:
+                      return true;
+                  }
+                }).toList();
+
+                final totalSale = filteredEntries.fold<double>(0, (sum, e) => sum + e.salePrice);
+                final totalPurchase = filteredEntries.fold<double>(0, (sum, e) => sum + e.purchasePrice);
+                final totalProfit = filteredEntries.fold<double>(0, (sum, e) => sum + e.profit);
+
+                return Expanded(
+                  child: Column(
+                    children: [
+                      // Summary card
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                        child: Card(
+                          color: Colors.blue.shade50,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceAround,
+                              children: [
+                                Column(
+                                  children: [
+                                    Text('Total Sale', style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '\u20b9${totalSale.toStringAsFixed(0)}',
+                                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blue),
+                                    ),
+                                  ],
+                                ),
+                                Column(
+                                  children: [
+                                    Text('Total Purchase', style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '\u20b9${totalPurchase.toStringAsFixed(0)}',
+                                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.orange),
+                                    ),
+                                  ],
+                                ),
+                                Column(
+                                  children: [
+                                    Text('Profit', style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '\u20b9${totalProfit.toStringAsFixed(0)}',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: totalProfit >= 0 ? Colors.green : Colors.red,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Expanded(
+                        child: filteredEntries.isEmpty
+                            ? Center(child: Text('No entries for ${_salePurchaseFilter == 'All' ? 'now' : 'this ${_salePurchaseFilter.toLowerCase()} period'}.', style: const TextStyle(fontSize: 16, color: Colors.grey)))
+                            : ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      itemCount: filteredEntries.length,
+                      itemBuilder: (context, index) {
+                        final entry = filteredEntries[index];
+                        final isProfit = entry.profit >= 0;
+                        return Dismissible(
+                          key: Key(entry.id.toString()),
+                          background: Container(
+                            color: Colors.red,
+                            alignment: Alignment.centerRight,
+                            padding: const EdgeInsets.only(right: 16),
+                            child: const Icon(Icons.delete, color: Colors.white),
+                          ),
+                          direction: DismissDirection.endToStart,
+                          onDismissed: (_) {
+                            accountingService.deleteSalePurchaseEntry(entry.id!);
+                          },
+                          child: Card(
+                            margin: const EdgeInsets.only(bottom: 10),
+                            elevation: 1,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            child: Padding(
+                              padding: const EdgeInsets.all(14),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        DateFormat('dd MMM yyyy').format(DateTime.tryParse(entry.date) ?? DateTime.now()),
+                                        style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                                      ),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: isProfit ? Colors.green.shade50 : Colors.red.shade50,
+                                          borderRadius: BorderRadius.circular(20),
+                                        ),
+                                        child: Text(
+                                          '${isProfit ? '+' : ''}\u20b9${entry.profit.toStringAsFixed(0)}',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: isProfit ? Colors.green : Colors.red,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text('Sale Price', style: TextStyle(color: Colors.grey[500], fontSize: 11)),
+                                            const SizedBox(height: 2),
+                                            Text('\u20b9${entry.salePrice.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+                                          ],
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text('Purchase Price', style: TextStyle(color: Colors.grey[500], fontSize: 11)),
+                                            const SizedBox(height: 2),
+                                            Text('\u20b9${entry.purchasePrice.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+                                          ],
+                                        ),
+                                      ),
+                                      Column(
+                                        crossAxisAlignment: CrossAxisAlignment.end,
+                                        children: [
+                                          Text('Profit', style: TextStyle(color: Colors.grey[500], fontSize: 11)),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            '\u20b9${entry.profit.toStringAsFixed(0)}',
+                                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isProfit ? Colors.green : Colors.red),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+              ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showAddSalePurchaseModal() {
+    final salePriceController = TextEditingController();
+    final purchasePriceController = TextEditingController();
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        insetPadding: const EdgeInsets.all(20),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back),
+                    onPressed: () => Navigator.pop(context),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                  const SizedBox(width: 12),
+                  const Text(
+                    'Add Sale & Purchase',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              TextField(
+                controller: salePriceController,
+                autofocus: true,
+                decoration: InputDecoration(
+                  hintText: 'Sale Price',
+                  prefixText: '\u20b9 ',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(30),
+                    borderSide: BorderSide(color: Colors.grey.shade300),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(30),
+                    borderSide: BorderSide(color: Colors.grey.shade300),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                ),
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: purchasePriceController,
+                decoration: InputDecoration(
+                  hintText: 'Purchase Price',
+                  prefixText: '\u20b9 ',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(30),
+                    borderSide: BorderSide(color: Colors.grey.shade300),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(30),
+                    borderSide: BorderSide(color: Colors.grey.shade300),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                ),
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    final salePrice = double.tryParse(salePriceController.text) ?? 0.0;
+                    final purchasePrice = double.tryParse(purchasePriceController.text) ?? 0.0;
+
+                    if (salePrice > 0 || purchasePrice > 0) {
+                      final entry = SalePurchaseEntry(
+                        itemName: DateFormat('dd MMM yyyy').format(DateTime.now()),
+                        salePrice: salePrice,
+                        purchasePrice: purchasePrice,
+                        date: DateFormat('yyyy-MM-dd').format(DateTime.now()),
+                      );
+
+                      Provider.of<AccountingService>(context, listen: false).addSalePurchaseEntry(entry);
+                      Navigator.pop(context);
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue[900],
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                  ),
+                  child: const Text('Save', style: TextStyle(color: Colors.white, fontSize: 16)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -596,6 +947,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 return TextField(
                   controller: controller,
                   focusNode: focusNode,
+                  onChanged: (val) {
+                    setState(() {
+                      _customerController.text = val;
+                      // Update filtered options logic is handled by autocomplete, 
+                      // but we need setState to update button enabled state
+                    });
+                  },
                   decoration: InputDecoration(
                     hintText: 'Select Customer',
                     prefixIcon: const Icon(Icons.person_outline),
@@ -642,6 +1000,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     _qtyFocusNode.requestFocus();
                   },
                   fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+                    // Sync our controller text to autocomplete's controller (handle empty too)
+                    if (controller.text != _itemNameController.text) {
+                      controller.text = _itemNameController.text;
+                    }
                     return TextField(
                       controller: controller,
                       focusNode: focusNode,
@@ -657,9 +1019,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
               IconButton(
                 icon: const Icon(Icons.remove_circle_outline, color: Colors.grey), 
                 onPressed: () {
-                  _itemNameController.clear();
-                  _qtyController.clear();
-                  _rateController.clear();
+                  setState(() {
+                    _itemNameController.clear();
+                    _qtyController.clear();
+                    _rateController.clear();
+                  });
                 },
               ),
             ],
@@ -747,34 +1111,61 @@ class _DashboardScreenState extends State<DashboardScreen> {
             itemCount: _invoiceItems.length,
             itemBuilder: (context, index) {
               final item = _invoiceItems[index];
-              return Container(
-                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
-                decoration: BoxDecoration(
-                  color: index % 2 == 0 ? Colors.blue.withAlpha(13) : Colors.white,
+              return Dismissible(
+                key: Key(item.id),
+                background: Container(
+                  color: Colors.blue,
+                  alignment: Alignment.centerLeft,
+                  padding: const EdgeInsets.only(left: 20),
+                  child: const Icon(Icons.edit, color: Colors.white),
                 ),
-                child: Row(
-                  children: [
-                    SizedBox(width: 20, child: Text('${index + 1}')),
-                    Expanded(flex: 3, child: Text(item.name, style: const TextStyle(fontWeight: FontWeight.w500))),
-                    Expanded(
-                      flex: 2, 
-                      child: Text(
-                        '${item.quantity.toStringAsFixed(0)} ${item.unit}', 
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 13),
+                secondaryBackground: Container(
+                  color: Colors.red,
+                  alignment: Alignment.centerRight,
+                  padding: const EdgeInsets.only(right: 20),
+                  child: const Icon(Icons.delete, color: Colors.white),
+                ),
+                confirmDismiss: (direction) async {
+                  if (direction == DismissDirection.startToEnd) {
+                    // Swipe right → Edit inline
+                    _showEditItemDialog(index);
+                  } else {
+                    // Swipe left → Delete
+                    setState(() {
+                      _invoiceItems.removeAt(index);
+                    });
+                  }
+                  return false; // We handle removal ourselves
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: index % 2 == 0 ? Colors.blue.withAlpha(13) : Colors.white,
+                  ),
+                  child: Row(
+                    children: [
+                      SizedBox(width: 20, child: Text('${index + 1}')),
+                      Expanded(flex: 3, child: Text(item.name, style: const TextStyle(fontWeight: FontWeight.w500))),
+                      Expanded(
+                        flex: 2, 
+                        child: Text(
+                          '${item.quantity.toStringAsFixed(0)} ${item.unit}', 
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 13),
+                        ),
                       ),
-                    ),
-                    Expanded(flex: 2, child: Text('₹${item.rate.toStringAsFixed(0)}', textAlign: TextAlign.right, style: const TextStyle(fontSize: 13))),
-                    Expanded(
-                      flex: 2, 
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Text('₹${item.total.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                        ],
+                      Expanded(flex: 2, child: Text('₹${item.rate.toStringAsFixed(0)}', textAlign: TextAlign.right, style: const TextStyle(fontSize: 13))),
+                      Expanded(
+                        flex: 2, 
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            Text('₹${item.total.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               );
             },
@@ -809,6 +1200,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
+  void _showEditItemDialog(int index) {
+    final item = _invoiceItems[index];
+    setState(() {
+      _itemNameController.text = item.name;
+      _qtyController.text = item.quantity.toStringAsFixed(0);
+      _rateController.text = item.rate.toStringAsFixed(0);
+      _selectedUnit = item.unit;
+      _invoiceItems.removeAt(index);
+    });
+  }
+
+
+
   Widget _buildCalculationRow(String label, double amount, {bool isBold = false, Color? color}) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -835,41 +1239,127 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // Dialog methods removed in favor of inline entry
 
   void _saveInvoice() async {
-    if (_selectedCustomer == null || _invoiceItems.isEmpty) return;
+    // Allow save if customer selected OR typed manually
+    if ((_selectedCustomer == null && _customerController.text.isEmpty) || _invoiceItems.isEmpty) return;
+
+    final accountingService = Provider.of<AccountingService>(context, listen: false);
+
+    // If no customer selected but name typed, check if exists or use Guest
+    int? targetEntryId;
+    String customerName = _customerController.text.trim();
+
+    if (_selectedCustomer != null) {
+      targetEntryId = _selectedCustomer!.id;
+      customerName = _selectedCustomer!.name;
+    } else if (_customerController.text.isNotEmpty) {
+      final authService = Provider.of<AuthService>(context, listen: false);
+      final userId = authService.userId;
+
+      if (userId == null) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error: User not logged in')));
+        return;
+      }
+
+      try {
+        // Check if exists
+        final existing = accountingService.entries.firstWhere(
+          (e) => e.name.toLowerCase() == customerName.toLowerCase(),
+          orElse: () => AccountingEntry(userId: -1, name: '', phone: '', creditAmount: 0, debitAmount: 0, date: ''),
+        );
+
+        if (existing.userId != -1) {
+          _selectedCustomer = existing;
+          targetEntryId = existing.id;
+        } else {
+          // Use "Guest" entry ID
+          targetEntryId = await accountingService.getGuestEntry(userId);
+        }
+      } catch (e) {
+        if (mounted) {
+           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error determining customer: $e')));
+        }
+        return;
+      }
+    }
+
+    if (targetEntryId == null) return;
 
     final total = _invoiceItems.fold<double>(0, (sum, item) => sum + item.total);
+    final roundedTotal = total.floorToDouble();
+    
+    // Determine description format. 
+    // If Guest/Ad-hoc, include the name in description.
+    String description;
+    bool isGuest = _selectedCustomer == null || _selectedCustomer!.name == 'Walk-in Customer';
+    
+    if (isGuest) {
+       // Use controller text for ad-hoc/guest name
+       description = 'Invoice: ${_customerController.text.trim()} | ${_invoiceItems.map((i) => i.name).join(", ")}';
+    } else {
+       description = 'Invoice: ${_invoiceItems.map((i) => i.name).join(", ")}';
+    }
 
     try {
-      // 1. Save Transaction to DB
-      final transaction = TransactionModel(
-        entryId: _selectedCustomer!.id!,
-        amount: total,
-        date: DateTime.now().toIso8601String(),
-        description: 'Invoice: ${_invoiceItems.map((i) => i.name).join(", ")}',
-        type: 'DEBIT', // Customer owes money
-      );
-
-      await Provider.of<AccountingService>(context, listen: false)
-          .addTransaction(transaction);
-
-      // 2. Generate/Print PDF (Optional based on user workflow, keeping it for now)
-      // 2. Generate/Print PDF (Optional based on user workflow, keeping it for now)
-      // final items = ... (Removed unused variable)
-
-      // Note: We might not want to auto-print on save, but for now enabling it as per previous code
-      // await BillGenerator.printInvoice(...) 
-      // User said "save the invoice in history tab", not necessarily print.
-      // So I'll comment out the print/share logic here to keep it fast, 
-      // or maybe just keep it separate. The buttons are separate (Save, Share, Print).
-      // So Save should just Save.
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Invoice saved to History!')),
+      if (_editingTransactionId != null) {
+        // UPDATE existing invoice
+        final updatedTx = TransactionModel(
+          id: _editingTransactionId,
+          entryId: targetEntryId,
+          amount: roundedTotal,
+          date: DateTime.now().toIso8601String(),
+          description: description,
+          type: 'DEBIT',
         );
-        
-        // Form details are NOT cleared, allowing user to Share/Print the saved invoice.
-        // User explicitly can clear manually or by starting new invoice if we add a button.
+        await accountingService.updateTransaction(updatedTx);
+
+        final invoiceItemModels = _invoiceItems.map((item) => InvoiceItemModel(
+          transactionId: _editingTransactionId!,
+          itemName: item.name,
+          quantity: item.quantity,
+          unit: item.unit,
+          rate: item.rate,
+          total: item.total,
+        )).toList();
+        await accountingService.updateInvoiceItems(_editingTransactionId!, invoiceItemModels);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Invoice updated!')),
+          );
+          setState(() {
+            _editingTransactionId = null;
+            _invoiceItems.clear();
+            _selectedCustomer = null;
+            _customerController.clear();
+          });
+        }
+      } else {
+        // CREATE new invoice
+        final transaction = TransactionModel(
+          entryId: targetEntryId,
+          amount: roundedTotal,
+          date: DateTime.now().toIso8601String(),
+          description: description,
+          type: 'DEBIT',
+        );
+
+        final txId = await accountingService.addTransaction(transaction);
+
+        final invoiceItemModels = _invoiceItems.map((item) => InvoiceItemModel(
+          transactionId: txId,
+          itemName: item.name,
+          quantity: item.quantity,
+          unit: item.unit,
+          rate: item.rate,
+          total: item.total,
+        )).toList();
+        await accountingService.saveInvoiceItems(txId, invoiceItemModels);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Invoice saved to History!')),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -880,8 +1370,40 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  void _loadInvoiceForEditing(TransactionModel transaction, AccountingEntry customer, List<InvoiceItemModel> items) {
+    setState(() {
+      _selectedIndex = 2; // Switch to Home tab
+      _editingTransactionId = transaction.id;
+      _selectedCustomer = customer;
+      
+      // Parse ad-hoc name if Guest
+      if (customer.name == 'Walk-in Customer') {
+         final parts = transaction.description.split('|');
+         if (parts.length > 1) {
+            _customerController.text = parts[0].replaceFirst('Invoice:', '').trim();
+         } else {
+            _customerController.text = ''; 
+         }
+      } else {
+         _customerController.text = customer.name;
+      }
+      
+      _invoiceItems.clear();
+      _invoiceItemCounter = 0;
+      for (final item in items) {
+        _invoiceItems.add(InvoiceItem(
+          id: 'edit_${_invoiceItemCounter++}',
+          name: item.itemName,
+          quantity: item.quantity,
+          unit: item.unit,
+          rate: item.rate,
+        ));
+      }
+    });
+  }
+
   void _shareInvoice() async {
-    if (_selectedCustomer == null || _invoiceItems.isEmpty) return;
+    if ((_selectedCustomer == null && _customerController.text.isEmpty) || _invoiceItems.isEmpty) return;
 
     try {
       final items = _invoiceItems.map((item) => {
@@ -893,9 +1415,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }).toList();
 
       await BillGenerator.shareInvoice(
-        customerName: _selectedCustomer!.name,
-        customerPhone: _selectedCustomer!.phone,
-        customerAdvance: _selectedCustomer!.creditAmount,
+        customerName: _selectedCustomer?.name ?? _customerController.text,
+        customerPhone: _selectedCustomer?.phone ?? '',
+        customerAdvance: _selectedCustomer?.creditAmount ?? 0.0,
         items: items,
       );
     } catch (e) {
@@ -908,7 +1430,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _printInvoice() async {
-    if (_selectedCustomer == null || _invoiceItems.isEmpty) return;
+    if ((_selectedCustomer == null && _customerController.text.isEmpty) || _invoiceItems.isEmpty) return;
 
     try {
       final items = _invoiceItems.map((item) => {
@@ -920,9 +1442,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }).toList();
 
       await BillGenerator.printInvoice(
-        customerName: _selectedCustomer!.name,
-        customerPhone: _selectedCustomer!.phone,
-        customerAdvance: _selectedCustomer!.creditAmount,
+        customerName: _selectedCustomer?.name ?? _customerController.text,
+        customerPhone: _selectedCustomer?.phone ?? '',
+        customerAdvance: _selectedCustomer?.creditAmount ?? 0.0,
         items: items,
       );
     } catch (e) {
@@ -935,9 +1457,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
   Widget _buildInvoiceFooter(AccountingService accountingService) {
-    final total = _invoiceItems.fold<double>(0, (sum, item) => sum + item.total);
-    final advance = _selectedCustomer?.creditAmount ?? 0.0;
-    final balance = total - advance;
+    final subtotal = _invoiceItems.fold<double>(0, (sum, item) => sum + item.total);
+    final roundedTotal = subtotal.floorToDouble();
+    final roundOff = roundedTotal - subtotal; // negative value like -0.1
+    final advance = _selectedCustomer?.debitAmount ?? 0.0;
+    final balance = roundedTotal - advance;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -955,8 +1479,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
       child: Column(
         children: [
-          _buildCalculationRow('Total', total, isBold: true, color: Colors.blue[900]),
-          if (_selectedCustomer != null && _selectedCustomer!.creditAmount > 0) ...[
+          _buildCalculationRow('Subtotal', subtotal, color: Colors.grey[700]),
+          if (roundOff != 0) ...[
+            const SizedBox(height: 4),
+            _buildCalculationRow('Round Off', roundOff, color: Colors.orange[800]),
+          ],
+          const SizedBox(height: 4),
+          _buildCalculationRow('Total', roundedTotal, isBold: true, color: Colors.blue[900]),
+          if (_selectedCustomer != null && _selectedCustomer!.debitAmount > 0) ...[
              const SizedBox(height: 8),
              _buildCalculationRow('Advance', advance, color: Colors.green),
              const Divider(height: 16),
@@ -970,7 +1500,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             children: [
               Expanded(
                 child: ElevatedButton.icon(
-                  onPressed: _invoiceItems.isEmpty || _selectedCustomer == null
+                  onPressed: _invoiceItems.isEmpty || (_selectedCustomer == null && _customerController.text.isEmpty)
                       ? null
                       : () => _saveInvoice(),
                   icon: const Icon(Icons.save_outlined),
@@ -986,7 +1516,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: ElevatedButton.icon(
-                  onPressed: _invoiceItems.isEmpty || _selectedCustomer == null
+                  onPressed: _invoiceItems.isEmpty || (_selectedCustomer == null && _customerController.text.isEmpty)
                       ? null
                       : () => _shareInvoice(),
                   icon: const Icon(Icons.share_outlined),
@@ -1002,7 +1532,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: _invoiceItems.isEmpty || _selectedCustomer == null
+                  onPressed: _invoiceItems.isEmpty || (_selectedCustomer == null && _customerController.text.isEmpty)
                       ? null
                       : () => _printInvoice(),
                   icon: const Icon(Icons.print_outlined),
@@ -1078,7 +1608,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 return Center(child: Text('Error: ${snapshot.error}'));
               }
 
-              final allTransactions = snapshot.data ?? [];
+              final allTransactions = (snapshot.data ?? [])
+                  .where((tx) => tx.description.startsWith('Invoice:'))
+                  .toList();
               
               // Filter based on search query
               final transactions = allTransactions.where((tx) {
@@ -1117,31 +1649,55 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   final tx = transactions[index];
                   final isDebit = tx.type == 'DEBIT';
                   final date = DateTime.tryParse(tx.date) ?? DateTime.now();
-                  final dateString = '${date.day}/${date.month}/${date.year}';
-                  
+                  final dateFormatted = DateFormat('dd-MMM-yy').format(date);
+
                   final entry = Provider.of<AccountingService>(context, listen: false)
                       .entries
                       .firstWhere((e) => e.id == tx.entryId, orElse: () => AccountingEntry(userId: 0, name: 'Unknown', phone: '', creditAmount: 0, debitAmount: 0, date: ''));
 
+                  String displayName = entry.name;
+                  if (entry.name == 'Walk-in Customer') {
+                     final parts = tx.description.split('|');
+                     if (parts.length > 1) {
+                        displayName = parts[0].replaceFirst('Invoice:', '').trim();
+                     }
+                  }
+
                   return ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: CircleAvatar(
-                      backgroundColor: isDebit ? Colors.blue.shade50 : Colors.green.shade50,
-                      child: Icon(
-                        isDebit ? Icons.description_outlined : Icons.attach_money,
-                        color: isDebit ? Colors.blue : Colors.green,
-                      ),
+                    leading: Text(
+                      '#${transactions.length - index}',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 14),
                     ),
-                    title: Text(entry.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text('$dateString • ${tx.description}'),
+                    title: Text(displayName, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Text(dateFormatted),
                     trailing: Text(
-                      '₹${tx.amount.toStringAsFixed(2)}',
+                      '\u20b9${tx.amount.toStringAsFixed(2)}',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
-                        color: isDebit ? Colors.black : Colors.green,
+                        color: isDebit ? Colors.blue[900] : Colors.green,
                       ),
                     ),
+                    onTap: () async {
+                      final result = await Navigator.push<Map<String, dynamic>>(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => InvoiceDetailScreen(
+                            transaction: tx,
+                            customer: entry,
+                          ),
+                        ),
+                      );
+
+                      if (result != null && result['action'] == 'edit') {
+                        _loadInvoiceForEditing(
+                          result['transaction'] as TransactionModel,
+                          result['customer'] as AccountingEntry,
+                          result['items'] as List<InvoiceItemModel>,
+                        );
+                      }
+                    },
                   );
                 },
               );
