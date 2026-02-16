@@ -219,7 +219,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: SingleChildScrollView(
                     child: Column(
                       children: [
-                        _buildSummaryCard(accountingService),
+                        // _buildSummaryCard(accountingService),
                         _buildInvoiceContent(accountingService),
                       ],
                     ),
@@ -347,36 +347,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildSummaryCard(AccountingService service) {
-    return Card(
-      margin: const EdgeInsets.all(16),
-      color: Colors.white,
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _buildSummaryItem('Total Credit', service.totalCredit, Colors.green),
-            _buildSummaryItem('Total Debit', service.totalDebit, Colors.red),
-            _buildSummaryItem('Balance', service.balance, Colors.blue),
-          ],
-        ),
-      ),
-    );
-  }
+  // Widget _buildSummaryCard(AccountingService service) {
+  //   return Card(
+  //     margin: const EdgeInsets.all(16),
+  //     color: Colors.white,
+  //     child: Padding(
+  //       padding: const EdgeInsets.all(16.0),
+  //       child: Row(
+  //         mainAxisAlignment: MainAxisAlignment.spaceAround,
+  //         children: [
+  //           _buildSummaryItem('Total Credit', service.totalCredit, Colors.green),
+  //           _buildSummaryItem('Total Debit', service.totalDebit, Colors.red),
+  //           _buildSummaryItem('Balance', service.balance, Colors.blue),
+  //         ],
+  //       ),
+  //     ),
+  //   );
+  // }
 
-  Widget _buildSummaryItem(String label, double amount, Color color) {
-    return Column(
-      children: [
-        Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-        const SizedBox(height: 4),
-        Text(
-          amount.toStringAsFixed(2),
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color),
-        ),
-      ],
-    );
-  }
+  // Widget _buildSummaryItem(String label, double amount, Color color) {
+  //   return Column(
+  //     children: [
+  //       Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+  //       const SizedBox(height: 4),
+  //       Text(
+  //         amount.toStringAsFixed(2),
+  //         style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color),
+  //       ),
+  //     ],
+  //   );
+  // }
 
   Widget _buildItemsTab() {
     return Consumer<AccountingService>(
