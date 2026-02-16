@@ -46,6 +46,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String _searchQuery = '';
   String _historySearchQuery = ''; // Added for History tab search
   String _salePurchaseFilter = 'All'; // All, Daily, Weekly, Monthly, Yearly
+  String _historyFilter = 'All'; // Added for History tab filtering
   
   // Invoice state
   AccountingEntry? _selectedCustomer;
@@ -1566,7 +1567,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text('Invoices', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-                  IconButton(onPressed: () {}, icon: const Icon(Icons.sort)), // Sort icon placeholder
+                  PopupMenuButton<String>(
+                    icon: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                         Text(
+                          _historyFilter,
+                          style: TextStyle(color: Colors.blue[900], fontSize: 13, fontWeight: FontWeight.w500),
+                        ),
+                        Icon(Icons.filter_list, color: Colors.blue[900]),
+                      ],
+                    ),
+                    onSelected: (value) {
+                      setState(() {
+                        _historyFilter = value;
+                      });
+                    },
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(value: 'All', child: Text('All')),
+                      const PopupMenuItem(value: 'Daily', child: Text('Daily')),
+                      const PopupMenuItem(value: 'Weekly', child: Text('Weekly')),
+                      const PopupMenuItem(value: 'Monthly', child: Text('Monthly')),
+                      const PopupMenuItem(value: 'Yearly', child: Text('Yearly')),
+                    ],
+                  ),
                 ],
               ),
               const SizedBox(height: 16),
@@ -1612,8 +1636,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   .where((tx) => tx.description.startsWith('Invoice:'))
                   .toList();
               
+              // Apply Date Filter
+              final dateFilteredTransactions = allTransactions.where((tx) {
+                if (_historyFilter == 'All') return true;
+
+                final date = DateTime.tryParse(tx.date) ?? DateTime.now();
+                final now = DateTime.now();
+
+                if (_historyFilter == 'Daily') {
+                  return date.year == now.year && date.month == now.month && date.day == now.day;
+                } else if (_historyFilter == 'Weekly') {
+                   // Last 7 days
+                   return date.isAfter(now.subtract(const Duration(days: 7)));
+                } else if (_historyFilter == 'Monthly') {
+                  return date.year == now.year && date.month == now.month;
+                } else if (_historyFilter == 'Yearly') {
+                  return date.year == now.year;
+                }
+                return true;
+              }).toList();
+              
               // Filter based on search query
-              final transactions = allTransactions.where((tx) {
+              final transactions = dateFilteredTransactions.where((tx) {
                 if (_historySearchQuery.isEmpty) return true;
                 
                 final entry = Provider.of<AccountingService>(context, listen: false)
