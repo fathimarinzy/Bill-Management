@@ -764,7 +764,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         itemName: DateFormat('dd MMM yyyy').format(DateTime.now()),
                         salePrice: salePrice,
                         purchasePrice: purchasePrice,
-                        date: DateFormat('yyyy-MM-dd').format(DateTime.now()),
+                        date: DateTime.now().toIso8601String(),
                       );
 
                       Provider.of<AccountingService>(context, listen: false).addSalePurchaseEntry(entry);

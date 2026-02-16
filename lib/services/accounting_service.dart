@@ -284,7 +284,7 @@ class AccountingService with ChangeNotifier {
 
   Future<void> loadSalePurchaseEntries() async {
     final db = await DatabaseHelper.instance.database;
-    final maps = await db.query('sale_purchase_entries', orderBy: 'date DESC');
+    final maps = await db.query('sale_purchase_entries', orderBy: 'id DESC');
     _salePurchaseEntries = maps.map((e) => SalePurchaseEntry.fromMap(e)).toList();
     notifyListeners();
   }
